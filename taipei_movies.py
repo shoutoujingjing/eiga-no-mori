@@ -504,7 +504,7 @@ body{margin:0;background:var(--bg);color:var(--ink);
   font:15px/1.55 "PingFang TC","Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif}
 body.lock{overflow:hidden}
 button,input,select{font:inherit;color:inherit}
-.wrap{max-width:860px;margin:0 auto;padding:0 16px 80px}
+.wrap{max-width:860px;margin:0 auto;padding:0 16px 110px}
 header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);padding:14px 0 10px}
 header .wrap{padding-bottom:0}
 .top{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
@@ -567,6 +567,32 @@ input:focus,select:focus{border-color:var(--accent)}
   color:var(--mute);font-weight:400;white-space:nowrap}
 .miss{background:var(--accent-soft);border-radius:10px;padding:8px 12px;margin:10px 0 4px;font-size:13px;line-height:1.5}
 .miss b{color:var(--accent)}
+.tm{cursor:pointer;user-select:none;-webkit-user-select:none}
+.tm.pick{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.tm.pick small{color:inherit;opacity:.85}
+.slot{cursor:pointer;user-select:none;-webkit-user-select:none}
+.slot .ck{align-self:center;width:22px;height:22px;border-radius:50%;
+  border:1.5px solid var(--faint);display:grid;place-items:center;font-size:13px;color:transparent}
+.slot.pick{border-color:var(--accent);background:var(--accent-soft)}
+.slot.pick .ck{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.slot .t small{display:block;font-size:11px;font-weight:400;color:var(--mute);margin-top:1px}
+.pickbar{position:fixed;left:50%;bottom:calc(14px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:15;
+  display:flex;align-items:center;gap:8px;background:var(--ink);color:var(--bg);border-radius:99px;
+  padding:7px 7px 7px 16px;box-shadow:0 6px 24px rgba(75,48,39,.3);white-space:nowrap;max-width:calc(100% - 24px)}
+.pickbar[hidden]{display:none}
+.pickbar .pn{font-size:14px}
+.pickbar button{border:0;border-radius:99px;padding:6px 13px;cursor:pointer;font-size:14px}
+.pickbar .go{background:var(--accent);color:var(--accent-ink);font-weight:600}
+.pickbar .clr{background:transparent;color:var(--bg);opacity:.8}
+.pickbar .clr.warn{opacity:1;background:rgba(255,255,255,.15)}
+.tsearch{padding:0 16px 10px;border-bottom:1px solid var(--line)}
+.tsearch input{width:100%}
+.share-body{overflow-y:auto;padding:14px 16px 18px;text-align:center}
+.share-body img{width:100%;max-width:420px;border-radius:12px;box-shadow:0 4px 18px rgba(75,48,39,.18);display:block;margin:0 auto}
+.share-act{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:14px}
+.share-act button,.share-act a{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:10px;
+  padding:8px 14px;cursor:pointer;text-decoration:none;font-size:14px}
+.share-act .main{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
 .empty{text-align:center;color:var(--mute);padding:48px 0}
 
 /* 選擇影院 */
@@ -613,7 +639,7 @@ input:focus,select:focus{border-color:var(--accent)}
 
 @media (max-width:560px){
   .th{flex-direction:column;gap:6px}.thn{width:auto}
-  .slot{grid-template-columns:48px 1fr}.slot .end{grid-column:2}
+  .slot{grid-template-columns:50px 1fr auto}
   .sheet{padding:0;align-items:flex-end}
   .card{max-width:none;max-height:90vh;border-radius:14px 14px 0 0}
 }
@@ -640,7 +666,26 @@ input:focus,select:focus{border-color:var(--accent)}
       <button class="chip" data-preset="all">全選</button>
       <button class="chip" data-preset="none">全部取消</button>
     </div>
+    <div class="tsearch"><input type="search" id="tq" placeholder="搜尋影院或捷運站…" autocomplete="off" enterkeyhint="search"></div>
     <div class="card-body" id="sheetBody"></div>
+  </div>
+</div>
+
+<div class="pickbar" id="pickbar" hidden></div>
+
+<div class="sheet" id="share" hidden>
+  <div class="sheet-bg" data-closeshare="1"></div>
+  <div class="card" role="dialog" aria-label="分享場次">
+    <div class="card-hd"><b>分享場次</b><span class="n">傳給朋友一起約時間</span><button class="done" data-closeshare="1">完成</button></div>
+    <div class="share-body">
+      <img id="shareImg" alt="場次分享圖">
+      <div class="share-act">
+        <button class="main" id="shareBtn" hidden>分享圖片</button>
+        <a id="dlBtn" download="台北電影之森_場次.png">下載圖片</a>
+        <button id="copyBtn">複製文字</button>
+      </div>
+      <div class="note" id="shareNote" style="margin-top:10px">iPhone 也可以長按圖片「加入照片」。</div>
+    </div>
   </div>
 </div>
 
@@ -672,6 +717,15 @@ let lists = store.get("lists", []).map(l => ({...l, ids: l.ids.filter(id => T[id
 const S = { date: DATES[0], mode: store.get("mode", "film"), q: "", open: null, from: null, span: store.get("span", 3),
             draft: "", showHidden: false, confirmDel: null };
 const VISIBLE = () => ALL.filter(id => !hidden.has(id));
+
+/* 勾選場次（彙整成分享圖） */
+const keyOf = s => [s.date, s.tid, s.fid, s.time, s.ver].join("|");
+const BYKEY = new Map(SHOWS.map(s => [keyOf(s), s]));
+let picks = new Set(store.get("picks", []).filter(k => BYKEY.has(k)));
+const savePicks = () => store.set("picks", [...picks]);
+const pickedList = () => [...picks].map(k => BYKEY.get(k)).filter(Boolean)
+  .sort((a,b) => a.date.localeCompare(b.date) || a.min - b.min || a.tid.localeCompare(b.tid));
+S.tq = ""; S.confirmClear = false;
 const saveLists = () => store.set("lists", lists);
 
 const MISSES = (D.misses || []).filter(m => T[m[0]]);
@@ -742,7 +796,7 @@ function renderFilmList(){
     .map(([fid, ss]) => ({fid, ss, th: new Set(ss.map(s => s.tid)), up: ss.filter(s => !isPast(s)).length}))
     .sort((a,b) => (b.up>0)-(a.up>0) || b.th.size - a.th.size || b.ss.length - a.ss.length);
 
-  let h = missNote() + `<div class="hint">${films.length} 部電影 · ${sel.size} 間影院 · 點片名展開場次</div>`;
+  let h = missNote() + `<div class="hint">${films.length} 部電影 · ${sel.size} 間影院 · 點片名展開場次，點場次可勾選分享</div>`;
   if (!films.length) h += `<div class="empty">${emptyMsg()}</div>`;
   for (const f of films){
     const info = D.films[f.fid], open = S.open === f.fid;
@@ -757,7 +811,7 @@ function renderFilmList(){
       h += `<div class="body">` + rows.map(([tid, ss]) => {
         ss.sort((a,b) => a.min - b.min);
         return `<div class="th"><div class="thn">${starBtn(tid)}${esc(T[tid].name)}<small>${staTag(tid)}</small></div>
-          <div class="times">${ss.map(s => `<span class="tm ${isPast(s)?"past":""} ${isFav(tid)?"fav":""}">${s.time}${s.ver?`<small>${esc(s.ver)}</small>`:""}${endOf(s)?`<small>→${endOf(s)}</small>`:""}</span>`).join("")}</div></div>`;
+          <div class="times">${ss.map(s => `<span class="tm ${isPast(s)?"past":""} ${picks.has(keyOf(s))?"pick":""}" data-pick="${esc(keyOf(s))}">${s.time}${s.ver?`<small>${esc(s.ver)}</small>`:""}${endOf(s)?`<small>→${endOf(s)}</small>`:""}</span>`).join("")}</div></div>`;
       }).join("") + `</div>`;
     }
     h += `</div>`;
@@ -775,17 +829,17 @@ function renderTime(){
   let h = `<div class="ctl">從 <input type="time" id="from" value="${fmt(S.from)}" step="300">
     <select id="span">${spans.map(([v,l]) => `<option value="${v}" ${v===S.span?"selected":""}>${l}</option>`).join("")}</select>
     ${S.date===todayStr?`<button class="chip" id="now">現在</button>`:""}</div>
-    ${missNote()}<div class="hint">${list.length} 場 · ${sel.size} 間影院 · 點片名看這部片的所有場次</div>`;
+    ${missNote()}<div class="hint">${list.length} 場 · ${sel.size} 間影院 · 點場次可勾選分享</div>`;
   if (!list.length) h += `<div class="empty">${sel.size ? "這段時間沒有場次，試試拉長時間或「全部影院」" : emptyMsg()}</div>`;
   let lastH = null;
   for (const s of list){
     const hr = Math.floor(s.min/60);
     if (hr !== lastH){ lastH = hr; h += `<div class="hr">${hr>=24?"深夜 ":""}${String(hr%24).padStart(2,"0")} 點</div>`; }
-    h += `<div class="slot ${isFav(s.tid)?"isfav":""}">
-      <span class="t">${s.time}</span>
+    h += `<div class="slot ${picks.has(keyOf(s))?"pick":""}" data-pick="${esc(keyOf(s))}">
+      <span class="t">${s.time}${endOf(s) ? `<small>→${endOf(s)}</small>` : ""}</span>
       <div><button class="name" data-goto="${s.fid}">${esc(D.films[s.fid].title)}</button>${verTag(s.ver)}
-        <div class="where"><span>${starBtn(s.tid)}${esc(T[s.tid].name)}</span>${staTag(s.tid)}</div></div>
-      <span class="end">${endOf(s) ? "→ "+endOf(s) : ""}</span></div>`;
+        <div class="where"><span>${esc(T[s.tid].name)}</span>${staTag(s.tid)}</div></div>
+      <span class="ck">✓</span></div>`;
   }
   $("#main").innerHTML = h;
   $("#from").onchange = e => { if (e.target.value){ const [hh,mm] = e.target.value.split(":").map(Number); S.from = (hh<5?hh+24:hh)*60+mm; render(); } };
@@ -798,9 +852,22 @@ const tRow = id => `<div class="trow ${inSel(id)?"on":""} ${hidden.has(id)?"hid"
   <span class="box">✓</span><span class="tn">${esc(T[id].name)}</span>${staTag(id)}${starBtn(id)}
   <button class="mini" data-hide="${id}">${hidden.has(id) ? "恢復" : "收起"}</button></div>`;
 
+function tMatch(id, q){
+  const t = T[id];
+  return (t.name + " " + t.station + " " + t.lines.map(l => LINE[l]?.name || "").join(" ")).toLowerCase().includes(q);
+}
 function renderSheet(){
   const body = $("#sheetBody"), top = body.scrollTop;
   $("#selN").textContent = `已選 ${sel.size} 間`;
+  const q = S.tq.trim().toLowerCase();
+  if (q){
+    // 搜尋模式：收起的影院也一起找
+    const ids = ALL.filter(id => tMatch(id, q)).sort(thRank);
+    body.innerHTML = ids.length
+      ? `<div class="note" style="margin-top:12px">找到 ${ids.length} 間</div>` + ids.map(tRow).join("")
+      : `<div class="empty">找不到「${esc(S.tq.trim())}」</div>`;
+    return;
+  }
   let h = `<div class="grp-hd">我的清單</div>`;
   if (!lists.length) h += `<div class="note">先在下面勾好影院，再取個名字存起來，之後一鍵切換。</div>`;
   h += lists.map((l, i) => {
@@ -841,10 +908,159 @@ function saveList(){
   if (i >= 0) lists[i].ids = [...sel]; else lists.push({name, ids: [...sel]});
   S.draft = ""; saveLists(); render();
 }
-function openSheet(){ S.confirmDel = null; $("#sheet").hidden = false; document.body.classList.add("lock"); renderSheet(); $("#sheetBody").scrollTop = 0; }
+function openSheet(){ S.confirmDel = null; S.tq = ""; $("#tq").value = ""; $("#sheet").hidden = false; document.body.classList.add("lock"); renderSheet(); $("#sheetBody").scrollTop = 0; }
 function closeSheet(){ $("#sheet").hidden = true; document.body.classList.remove("lock"); render(); }
 
+/* ── 勾選列 ── */
+function renderPickBar(){
+  const bar = $("#pickbar");
+  if (!picks.size){ bar.hidden = true; S.confirmClear = false; return; }
+  bar.hidden = false;
+  bar.innerHTML = `<span class="pn">已選 ${picks.size} 場</span>
+    <button class="clr ${S.confirmClear?"warn":""}" data-clearpicks="1">${S.confirmClear ? "確定清除？" : "清除"}</button>
+    <button class="go" data-share="1">產生分享圖</button>`;
+}
+
+/* ── 分享圖 ── */
+const WK = "日一二三四五六";
+const absDate = d => { const x = new Date(d+"T00:00:00"); return `${x.getMonth()+1}/${x.getDate()}（${WK[x.getDay()]}）`; };
+const NUM = n => n <= 20 ? String.fromCodePoint(0x2460 + n - 1) : `(${n})`;
+
+function shareText(){
+  const items = pickedList();
+  let out = "一起去看電影？🍿\n", last = null;
+  items.forEach((s, i) => {
+    if (s.date !== last){ last = s.date; out += `\n${absDate(s.date)}\n`; }
+    const end = endOf(s);
+    out += `${NUM(i+1)} ${s.time}${end?"–"+end:""}　${D.films[s.fid].title}${s.ver?`（${s.ver}）`:""}\n　　${T[s.tid].name}${T[s.tid].station?"・"+T[s.tid].station:""}\n`;
+  });
+  return out + "\n你可以哪一場？回我號碼就好～";
+}
+
+function loadImg(src){
+  return new Promise(res => {
+    if (!/^https?:/.test(location.protocol)) return res(null);   // 本機檔案不畫圖示，避免無法輸出
+    const im = new Image();
+    im.onload = () => res(im); im.onerror = () => res(null);
+    setTimeout(() => res(null), 2500);
+    im.src = src;
+  });
+}
+
+async function makeShareCanvas(){
+  const items = pickedList();
+  const icon = await loadImg("icon.png");
+  const W = 1080, P = 56, FONT = '"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif';
+  const C = {bg:"#fff1e6", panel:"#fffaf5", ink:"#4b3027", mute:"#9b7563", line:"#f3d9c8", accent:"#d6372b", soft:"#ffe0d6"};
+  const cv = document.createElement("canvas"), cx = cv.getContext("2d");
+  const font = (w, px) => { cx.font = `${w} ${px}px ${FONT}`; };
+  const rr = (x, y, w, h, r) => { cx.beginPath(); cx.moveTo(x+r, y); cx.arcTo(x+w, y, x+w, y+h, r); cx.arcTo(x+w, y+h, x, y+h, r); cx.arcTo(x, y+h, x, y, r); cx.arcTo(x, y, x+w, y, r); cx.closePath(); };
+  const wrap = (text, maxW, maxLines) => {
+    const lines = []; let cur = "";
+    for (const ch of [...text]){
+      if (cx.measureText(cur + ch).width > maxW && cur){ lines.push(cur); cur = ch; if (lines.length === maxLines) break; }
+      else cur += ch;
+    }
+    if (lines.length < maxLines && cur) lines.push(cur);
+    else if (lines.length === maxLines && lines.join("").length < [...text].length){
+      let l = lines[maxLines-1]; while (l && cx.measureText(l + "…").width > maxW) l = l.slice(0, -1); lines[maxLines-1] = l + "…";
+    }
+    return lines;
+  };
+  const CX = P + 24, NUMX = CX + 30, TIMEX = CX + 84, BODYX = CX + 280, BODYW = W - P - 28 - BODYX;
+
+  function layout(draw){
+    let y = P;
+    if (draw){
+      cx.fillStyle = C.bg; cx.fillRect(0, 0, W, cv.height);
+      let tx = P;
+      if (icon){ cx.save(); rr(P, y, 104, 104, 26); cx.clip(); cx.drawImage(icon, P, y, 104, 104); cx.restore(); tx = P + 128; }
+      cx.fillStyle = C.ink; font("bold", 52); cx.fillText("一起去看電影？", tx, y + 56);
+      cx.fillStyle = C.mute; font("normal", 32); cx.fillText("你可以哪一場？回我號碼就好～", tx, y + 100);
+    }
+    y += 140;
+    let last = null;
+    items.forEach((s, i) => {
+      if (s.date !== last){
+        last = s.date; y += 18;
+        if (draw){ cx.fillStyle = C.accent; font("bold", 36); cx.fillText(absDate(s.date), P + 6, y + 36); }
+        y += 60;
+      }
+      font("bold", 40);
+      const title = D.films[s.fid].title, tl = wrap(title, BODYW, 2);
+      font("normal", 30);
+      const th = T[s.tid], where = th.name + (th.station ? "・" + th.station : "");
+      const wl = wrap(where, BODYW, 2);
+      const bodyH = tl.length * 52 + 8 + wl.length * 40 + (s.ver ? 46 : 0);
+      const h = Math.max(150, bodyH + 56);
+      if (draw){
+        cx.fillStyle = C.panel; rr(P, y, W - 2*P, h, 28); cx.fill();
+        cx.strokeStyle = C.line; cx.lineWidth = 3; cx.stroke();
+        // 號碼
+        cx.fillStyle = C.accent; cx.beginPath(); cx.arc(NUMX, y + 58, 26, 0, Math.PI*2); cx.fill();
+        cx.fillStyle = "#fff"; font("bold", 30); cx.textAlign = "center"; cx.fillText(String(i+1), NUMX, y + 69); cx.textAlign = "left";
+        // 時間
+        cx.fillStyle = C.ink; font("bold", 54); cx.fillText(s.time, TIMEX, y + 76);
+        const end = endOf(s);
+        if (end){ cx.fillStyle = C.mute; font("normal", 28); cx.fillText("→ " + end, TIMEX + 4, y + 118); }
+        // 片名、影院
+        let by = y + 28 + 40;
+        cx.fillStyle = C.ink; font("bold", 40); tl.forEach(l => { cx.fillText(l, BODYX, by); by += 52; });
+        by += 8 - 52 + 40;
+        cx.fillStyle = C.mute; font("normal", 30); wl.forEach(l => { cx.fillText(l, BODYX, by); by += 40; });
+        if (s.ver){
+          font("normal", 26); const vw = cx.measureText(s.ver).width + 24;
+          cx.fillStyle = C.soft; rr(BODYX, by - 30, vw, 40, 10); cx.fill();
+          cx.fillStyle = C.accent; cx.fillText(s.ver, BODYX + 12, by - 1);
+        }
+      }
+      y += h + 18;
+    });
+    y += 24;
+    if (draw){ cx.fillStyle = C.mute; font("normal", 26); cx.textAlign = "center"; cx.fillText("台北電影之森 · 場次以各影城公告為準", W/2, y + 20); cx.textAlign = "left"; }
+    return y + 20 + P;
+  }
+  cv.width = W; cv.height = 10;
+  const H = layout(false);
+  cv.height = H;
+  layout(true);
+  return cv;
+}
+
+let shareURL = null, shareFile = null;
+async function openShare(){
+  const sh = $("#share");
+  sh.hidden = false; document.body.classList.add("lock");
+  $("#shareImg").removeAttribute("src");
+  const cv = await makeShareCanvas();
+  const blob = await new Promise(r => cv.toBlob(r, "image/png"));
+  if (shareURL) URL.revokeObjectURL(shareURL);
+  shareURL = URL.createObjectURL(blob);
+  $("#shareImg").src = shareURL;
+  $("#dlBtn").href = shareURL;
+  shareFile = new File([blob], "台北電影之森_場次.png", {type: "image/png"});
+  let can = false; try { can = !!(navigator.canShare && navigator.canShare({files: [shareFile]})); } catch(e){}
+  $("#shareBtn").hidden = !can;
+}
+function closeShare(){ $("#share").hidden = true; if ($("#sheet").hidden) document.body.classList.remove("lock"); }
+$("#shareBtn").onclick = async () => { try { await navigator.share({files: [shareFile], title: "一起去看電影？"}); } catch(e){} };
+$("#copyBtn").onclick = async () => {
+  const t = shareText(), btn = $("#copyBtn");
+  try { await navigator.clipboard.writeText(t); }
+  catch(e){ const ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select(); try{ document.execCommand("copy"); }catch(_){} ta.remove(); }
+  btn.textContent = "已複製！"; setTimeout(() => btn.textContent = "複製文字", 1500);
+};
+
+/* 影院搜尋：注音選字時不重畫 */
+(() => {
+  const i = $("#tq"); let composing = false;
+  i.addEventListener("compositionstart", () => { composing = true; });
+  i.addEventListener("compositionend", () => { composing = false; S.tq = i.value; renderSheet(); });
+  i.addEventListener("input", e => { if (composing || e.isComposing) return; S.tq = i.value; renderSheet(); });
+})();
+
 function render(){
+  renderPickBar();
   renderHeader();
   if (S.mode === "time") renderTime();
   else { if (!$("#q")) renderFilmShell(); renderFilmList(); }
@@ -852,9 +1068,22 @@ function render(){
 }
 
 document.addEventListener("click", e => {
-  const b = e.target.closest("button,[data-tog],[data-close]"); if (!b) return;
+  const b = e.target.closest("button,a,[data-tog],[data-close],[data-pick],[data-closeshare]"); if (!b) return;
   const d = b.dataset;
   if (d.del === undefined) S.confirmDel = null;
+  if (d.clearpicks === undefined && S.confirmClear){ S.confirmClear = false; renderPickBar(); }
+  if (d.pick){
+    picks.has(d.pick) ? picks.delete(d.pick) : picks.add(d.pick); savePicks();
+    if (S.mode === "film") renderFilmList(); else renderTime();
+    renderPickBar(); return;
+  }
+  if (d.clearpicks){
+    if (S.confirmClear){ picks.clear(); savePicks(); S.confirmClear = false; render(); }
+    else { S.confirmClear = true; renderPickBar(); }
+    return;
+  }
+  if (d.share){ openShare(); return; }
+  if (d.closeshare){ closeShare(); return; }
   if (d.star){
     e.stopPropagation();
     favs.has(d.star) ? favs.delete(d.star) : favs.add(d.star);
@@ -894,7 +1123,10 @@ document.addEventListener("click", e => {
     const el = document.getElementById("f-"+S.open); if (el) el.scrollIntoView({block:"center"});
   }
 });
-document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#sheet").hidden) closeSheet(); });
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape") return;
+  if (!$("#share").hidden) closeShare(); else if (!$("#sheet").hidden) closeSheet();
+});
 render();
 </script>
 </body>
