@@ -486,7 +486,7 @@ PAGE = r"""<!doctype html>
 <link rel="icon" href="icon.png">
 <meta name="apple-mobile-web-app-title" content="ʕʘ‿ʘʔ🍿">
 <meta name="application-name" content="ʕʘ‿ʘʔ🍿">
-<meta name="theme-color" content="#fff1e6">
+<meta name="theme-color" content="#182c3e">
 <style>
 :root{
   --bg:#fff1e6; --panel:#fffaf5; --ink:#4b3027; --mute:#9b7563; --faint:#d6b6a4;
@@ -643,12 +643,69 @@ input:focus,select:focus{border-color:var(--accent)}
   .sheet{padding:0;align-items:flex-end}
   .card{max-width:none;max-height:90vh;border-radius:14px 14px 0 0}
 }
+/* ── 森林夜晚配色 ── */
+:root{
+  --bg:#182c3e; --panel:#f4eddd; --ink:#3b2a20; --mute:#8b725f; --faint:#cbbba4;
+  --line:#e3d7c0; --accent:#e8873f; --accent-ink:#fff; --accent-soft:#fde3c8;
+  --chip:#22384c; --shade:rgba(6,14,22,.62);
+  --page-ink:#f4eddd; --page-mute:#9fb1be; --moss:#6b7f58; --moon:#efd88e;
+}
+body{color:var(--page-ink);
+  background:
+   radial-gradient(1.5px 1.5px at 12% 6%,#efd88e 50%,transparent 51%),
+   radial-gradient(1.2px 1.2px at 68% 3%,#f4eddd 50%,transparent 51%),
+   radial-gradient(1.6px 1.6px at 88% 12%,#efd88e 50%,transparent 51%),
+   radial-gradient(1.2px 1.2px at 40% 10%,#f4eddd 50%,transparent 51%),
+   var(--bg) fixed}
+header{background:#182c3e;border-bottom:1px solid #2b445a;isolation:isolate}
+h1{color:var(--page-ink)}
+.logo{width:36px;height:36px;border-radius:10px;box-shadow:0 0 0 2px #2b445a}
+.stamp,.hint,.hr,.empty,.note,.fold,.card-hd .n{color:var(--page-mute)}
+.ctl{color:var(--page-mute)}
+.ctl input,.ctl select,input[type=search]{color:var(--ink)}
+.seg{background:var(--chip)}
+.seg button{color:var(--page-ink)}
+.seg button.on{background:var(--panel);color:var(--accent)}
+#modes button{display:inline-flex;align-items:center;gap:6px;padding:4px 12px 4px 6px}
+#modes button::before{content:"";width:30px;height:30px;background:center/contain no-repeat}
+#modes button[data-m=film]::before{background-image:url(tab-film.png)}
+#modes button[data-m=time]::before{background-image:url(tab-time.png)}
+.chip{color:var(--ink)}
+.chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.film,.slot,.trow,.lrow,.miss,.mini,.tm{color:var(--ink)}
+.film{border:0;box-shadow:0 3px 0 #0f1f2d}
+.slot{border:0;box-shadow:0 3px 0 #0f1f2d}
+.slot.pick{background:var(--accent-soft);box-shadow:0 0 0 2px var(--accent),0 3px 0 #0f1f2d}
+.hr{color:var(--moon)}
+.card{background:var(--bg);color:var(--page-ink)}
+.grp-hd{color:var(--page-ink)}
+.newlist button{background:var(--moss);color:#fff}
+.pickbar{background:var(--moon);color:var(--ink)}
+.pickbar .clr{color:var(--ink)}
+.done{background:var(--accent)}
+
+.miss{display:flex;gap:10px;align-items:center}
+.miss-ic{width:34px;height:34px;flex:none}
+.pb-ic{width:28px;height:28px;flex:none}
+/* 日期：一格一格的方塊 */
+.dates{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:3px;max-width:100%}
+.dates::-webkit-scrollbar{display:none}
+.day{flex:none;width:58px;height:58px;border-radius:14px;border:0;background:var(--chip);color:var(--page-ink);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;padding:0}
+.day small{font-size:11.5px;opacity:.75;line-height:1}
+.day b{font-size:17px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}
+.day.we small{color:#f3a86c;opacity:1}
+.day.today{background:var(--moon);color:var(--ink)}
+.day.today small{color:var(--ink);opacity:.7}
+.day.on{background:var(--accent);color:#fff}
+.day.on small{color:#fff;opacity:.9}
+.day.today.on{box-shadow:0 0 0 3px var(--moon)}
 </style>
 </head>
 <body>
 <header><div class="wrap">
   <div class="top"><h1><img class="logo" src="icon.png" alt="" onerror="this.remove()">台北電影之森</h1><span class="stamp" id="stamp"></span></div>
-  <div class="row"><div class="seg" id="dates"></div></div>
+  <div class="row"><div class="dates" id="dates"></div></div>
   <div class="row">
     <div class="seg" id="modes">
       <button data-m="film">找電影</button><button data-m="time">看時段</button>
@@ -733,7 +790,7 @@ const MISSES = (D.misses || []).filter(m => T[m[0]]);
 function missNote(){
   const ids = [...new Set(MISSES.filter(([tid, d, isToday]) => inSel(tid) && (d === S.date || (isToday && S.date >= d))).map(m => m[0]))];
   if (!ids.length) return "";
-  return `<div class="miss"><b>⚠ 這次沒抓到：</b>${ids.map(id => esc(T[id].name)).join("、")}<br>這${ids.length > 1 ? "幾" : ""}間的場次可能缺漏，下次更新會再抓一次。</div>`;
+  return `<div class="miss"><div><b>⚠ 這次沒抓到：</b>${ids.map(id => esc(T[id].name)).join("、")}<br>這${ids.length > 1 ? "幾" : ""}間的場次可能缺漏，下次更新會再抓一次。</div></div>`;
 }
 const isFav = tid => favs.has(tid);
 const inSel = tid => sel.has(tid);
@@ -759,7 +816,11 @@ function dateLabel(d){
 
 function renderHeader(){
   $("#stamp").textContent = "資料更新：" + D.generated.slice(5).replace("-", "/");
-  $("#dates").innerHTML = DATES.map(d => `<button data-d="${d}" class="${d===S.date?"on":""}">${dateLabel(d)}</button>`).join("");
+  $("#dates").innerHTML = DATES.map(d => {
+    const x = new Date(d+"T00:00:00"), w = x.getDay();
+    const cls = ["day", d===S.date?"on":"", d===todayStr?"today":"", (w===0||w===6)?"we":""].join(" ");
+    return `<button data-d="${d}" class="${cls}" title="${dateLabel(d)}"><small>週${"日一二三四五六"[w]}</small><b>${x.getMonth()+1}/${x.getDate()}</b></button>`;
+  }).join("");
   document.querySelectorAll("#modes button").forEach(b => b.classList.toggle("on", b.dataset.m === S.mode));
   const isF = false, isA = sameSet(sel, new Set(VISIBLE()));
   const onList = lists.findIndex(l => sameSet(sel, new Set(l.ids)));
@@ -928,13 +989,13 @@ const NUM = n => n <= 20 ? String.fromCodePoint(0x2460 + n - 1) : `(${n})`;
 
 function shareText(){
   const items = pickedList();
-  let out = "一起去看電影？🍿\n", last = null;
+  let out = "一起看電影吧！🍿\n", last = null;
   items.forEach((s, i) => {
     if (s.date !== last){ last = s.date; out += `\n${absDate(s.date)}\n`; }
     const end = endOf(s);
     out += `${NUM(i+1)} ${s.time}${end?"–"+end:""}　${D.films[s.fid].title}${s.ver?`（${s.ver}）`:""}\n　　${T[s.tid].name}${T[s.tid].station?"・"+T[s.tid].station:""}\n`;
   });
-  return out + "\n你可以哪一場？回我號碼就好～";
+  return out + "\n場次給你選٩(˃̶͈̀௰˂̶͈́)و";
 }
 
 function loadImg(src){
@@ -951,7 +1012,8 @@ async function makeShareCanvas(){
   const items = pickedList();
   const icon = await loadImg("icon.png");
   const W = 1080, P = 56, FONT = '"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif';
-  const C = {bg:"#fff1e6", panel:"#fffaf5", ink:"#4b3027", mute:"#9b7563", line:"#f3d9c8", accent:"#d6372b", soft:"#ffe0d6"};
+  const C = {bg:"#182c3e", panel:"#f4eddd", ink:"#3b2a20", mute:"#8b725f", line:"#e3d7c0", accent:"#e8873f", soft:"#fde3c8",
+             pageInk:"#f4eddd", pageMute:"#9fb1be", moon:"#efd88e"};
   const cv = document.createElement("canvas"), cx = cv.getContext("2d");
   const font = (w, px) => { cx.font = `${w} ${px}px ${FONT}`; };
   const rr = (x, y, w, h, r) => { cx.beginPath(); cx.moveTo(x+r, y); cx.arcTo(x+w, y, x+w, y+h, r); cx.arcTo(x+w, y+h, x, y+h, r); cx.arcTo(x, y+h, x, y, r); cx.arcTo(x, y, x+w, y, r); cx.closePath(); };
@@ -975,15 +1037,15 @@ async function makeShareCanvas(){
       cx.fillStyle = C.bg; cx.fillRect(0, 0, W, cv.height);
       let tx = P;
       if (icon){ cx.save(); rr(P, y, 104, 104, 26); cx.clip(); cx.drawImage(icon, P, y, 104, 104); cx.restore(); tx = P + 128; }
-      cx.fillStyle = C.ink; font("bold", 52); cx.fillText("一起去看電影？", tx, y + 56);
-      cx.fillStyle = C.mute; font("normal", 32); cx.fillText("你可以哪一場？回我號碼就好～", tx, y + 100);
+      cx.fillStyle = C.pageInk; font("bold", 52); cx.fillText("一起看電影吧！", tx, y + 56);
+      cx.fillStyle = C.pageMute; font("normal", 32); cx.fillText("場次給你選٩(˃̶͈̀௰˂̶͈́)و", tx, y + 100);
     }
     y += 140;
     let last = null;
     items.forEach((s, i) => {
       if (s.date !== last){
         last = s.date; y += 18;
-        if (draw){ cx.fillStyle = C.accent; font("bold", 36); cx.fillText(absDate(s.date), P + 6, y + 36); }
+        if (draw){ cx.fillStyle = C.moon; font("bold", 36); cx.fillText(absDate(s.date), P + 6, y + 36); }
         y += 60;
       }
       font("bold", 40);
@@ -995,7 +1057,8 @@ async function makeShareCanvas(){
       const h = Math.max(150, bodyH + 56);
       if (draw){
         cx.fillStyle = C.panel; rr(P, y, W - 2*P, h, 28); cx.fill();
-        cx.strokeStyle = C.line; cx.lineWidth = 3; cx.stroke();
+        cx.fillStyle = "rgba(0,0,0,.25)"; rr(P, y + 6, W - 2*P, h, 28); cx.fill();
+        cx.fillStyle = C.panel; rr(P, y, W - 2*P, h, 28); cx.fill();
         // 號碼
         cx.fillStyle = C.accent; cx.beginPath(); cx.arc(NUMX, y + 58, 26, 0, Math.PI*2); cx.fill();
         cx.fillStyle = "#fff"; font("bold", 30); cx.textAlign = "center"; cx.fillText(String(i+1), NUMX, y + 69); cx.textAlign = "left";
@@ -1017,7 +1080,7 @@ async function makeShareCanvas(){
       y += h + 18;
     });
     y += 24;
-    if (draw){ cx.fillStyle = C.mute; font("normal", 26); cx.textAlign = "center"; cx.fillText("台北電影之森 · 場次以各影城公告為準", W/2, y + 20); cx.textAlign = "left"; }
+    if (draw){ cx.fillStyle = C.pageMute; font("normal", 26); cx.textAlign = "center"; cx.fillText("台北電影之森 · 場次以各影城公告為準", W/2, y + 20); cx.textAlign = "left"; }
     return y + 20 + P;
   }
   cv.width = W; cv.height = 10;
@@ -1043,7 +1106,7 @@ async function openShare(){
   $("#shareBtn").hidden = !can;
 }
 function closeShare(){ $("#share").hidden = true; if ($("#sheet").hidden) document.body.classList.remove("lock"); }
-$("#shareBtn").onclick = async () => { try { await navigator.share({files: [shareFile], title: "一起去看電影？"}); } catch(e){} };
+$("#shareBtn").onclick = async () => { try { await navigator.share({files: [shareFile], title: "一起看電影吧！"}); } catch(e){} };
 $("#copyBtn").onclick = async () => {
   const t = shareText(), btn = $("#copyBtn");
   try { await navigator.clipboard.writeText(t); }
