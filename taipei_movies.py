@@ -638,8 +638,17 @@ PAGE = r"""<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>台北電影之森</title>
-<link rel="apple-touch-icon" href="icon.png">
-<link rel="icon" href="icon.png">
+<meta name="description" content="台北＋新北 39 間影城的場次一頁查完：找電影、看時段、依捷運線挑影院，還能勾選場次做成分享圖約朋友。">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="台北電影之森">
+<meta property="og:title" content="台北電影之森">
+<meta property="og:description" content="台北＋新北 39 間影城的場次一頁查完：找電影、看時段、依捷運線挑影院，還能勾選場次做成分享圖約朋友。">
+<meta property="og:url" content="https://shoutoujingjing.github.io/eiga-no-mori/">
+<meta property="og:image" content="https://shoutoujingjing.github.io/eiga-no-mori/icon.png?v=2">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="1024">
+<link rel="apple-touch-icon" href="icon.png?v=2">
+<link rel="icon" href="icon.png?v=2">
 <meta name="apple-mobile-web-app-title" content="ʕʘ‿ʘʔ🍿">
 <meta name="application-name" content="ʕʘ‿ʘʔ🍿">
 <meta name="theme-color" content="#182c3e">
@@ -860,7 +869,7 @@ h1{color:var(--page-ink)}
 </head>
 <body>
 <header><div class="wrap">
-  <div class="top"><h1><img class="logo" src="icon.png" alt="" onerror="this.remove()">台北電影之森</h1><span class="stamp" id="stamp"></span></div>
+  <div class="top"><h1><img class="logo" src="icon.png?v=2" alt="" onerror="this.remove()">台北電影之森</h1><span class="stamp" id="stamp"></span></div>
   <div class="row"><div class="dates" id="dates"></div></div>
   <div class="row">
     <div class="seg" id="modes">
@@ -1166,7 +1175,7 @@ function loadImg(src){
 
 async function makeShareCanvas(){
   const items = pickedList();
-  const icon = await loadImg("icon.png");
+  const icon = await loadImg("icon.png?v=2");
   const W = 1080, P = 56, FONT = '"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif';
   const C = {bg:"#182c3e", panel:"#f4eddd", ink:"#3b2a20", mute:"#8b725f", line:"#e3d7c0", accent:"#e8873f", soft:"#fde3c8",
              pageInk:"#f4eddd", pageMute:"#9fb1be", moon:"#efd88e"};
