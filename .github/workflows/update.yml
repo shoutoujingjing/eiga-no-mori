@@ -32,7 +32,7 @@ jobs:
         run: |
           mkdir -p site
           python taipei_movies.py --no-open --strict --gentle --out site/index.html
-          cp icon.png site/icon.png
+          cp *.png site/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
