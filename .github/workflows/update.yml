@@ -2,7 +2,9 @@ name: 更新電影時刻
 
 on:
   schedule:
-    - cron: "43 21 * * *"   # 台灣時間每天 05:43（一天一次就好）
+    # 時間是 UTC，台灣時間要 +8 小時
+    - cron: "43 21 * * *"   # 台灣每天 05:43
+    - cron: "17 12 * * 4"   # 台灣週四 20:17：多數影城已公布下一週（週五～下週四）
   workflow_dispatch:         # 也可以在 Actions 頁面手動按「Run workflow」立刻更新
 
 permissions:
