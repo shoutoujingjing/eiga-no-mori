@@ -159,12 +159,19 @@ def _wait_turn():
         _LAST[0] = time.monotonic()
 
 
-def fetch(url, tries=2):
+def fetch(url, tries=2, form=None):
     last = None
     for i in range(tries):
         try:
             _wait_turn()
-            req = Request(url, headers={"User-Agent": UA, "Accept-Language": "zh-TW,zh;q=0.9"})
+            headers = {"User-Agent": UA, "Accept-Language": "zh-TW,zh;q=0.9"}
+            body = None
+            if form is not None:   # POST（威秀官網用）
+                from urllib.parse import urlencode
+                body = urlencode(form).encode()
+                headers.update({"Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                                "X-Requested-With": "XMLHttpRequest"})
+            req = Request(url, data=body, headers=headers)
             with urlopen(req, timeout=15, context=SSL_CTX) as r:
                 raw = r.read()
                 cs = r.headers.get_content_charset()
@@ -182,7 +189,7 @@ def fetch(url, tries=2):
         except Exception as e:  # 網路暫時錯誤就重試
             last = e
             if GAP:
-                print(f"\n   … {url.split('/showtime/')[-1]} 第 {i + 1} 次失敗：{e}", flush=True)
+                print(f"\n   … {url.split('/showtime/')[-1].split('//')[-1]} 第 {i + 1} 次失敗：{e}", flush=True)
             time.sleep(BACKOFF * (i + 1))
     raise RuntimeError(f"{last}")
 
@@ -319,6 +326,134 @@ def parse_showtimes(html):
     return films, shows, p.dates, p.page_date
 
 
+# ── 威秀官網（補上預售、首映、直播等特殊場次）──────────────────────
+VS_URL = "https://www.vscinemas.com.tw/ShowTimes//ShowTimes/GetShowTimes"
+VS_CODES = [  # (威秀代碼, 開眼影院 id, 額外版本標籤)
+    ("TP", "t02a01", ""), ("MU", "t02a11", ""), ("MUC", "t02a11", "MUCROWN"),
+    ("NL", "t02a12", ""), ("QS", "t02b14", ""), ("TX", "t02b08", ""),
+    ("BQ", "t02e07", ""), ("GM", "t02e20", ""), ("HU", "t02e21", ""), ("LK", "t02e12", ""),
+]
+VS_RATING = {"普遍級": "普", "保護級": "護", "輔12級": "輔12", "輔15級": "輔15", "限制級": "限"}
+VS_TAG = {"數位": "", "國": "國語", "英": "英語", "日": "日語", "粵": "粵語", "韓": "韓語",
+          "PRE": "預售", "LIVE": "直播", "首映場": "首映", "特別場": "特別場", "搶先場": "搶先"}
+VS_DATE_RE = re.compile(r"(\d{1,2})月(\d{1,2})日")
+VS_NAME_RE = re.compile(r"^\(([^)]*)\)\s*(.*?)\s*(?:\(([^()]*(?:級|待定))\))?\s*$")
+
+
+class VieshowParser(_Base):
+    """解析威秀 GetShowTimes 回傳的 HTML：片名 → 日期 → 時間。"""
+
+    def __init__(self):
+        super().__init__()
+        self.items = []         # (片名原文, "M月D日", "HH:MM")
+        self._grab = None       # "name" / "date"
+        self._buf = []
+        self._name = self._date = None
+        self._in_session = 0
+
+    def handle_starttag(self, tag, attrs):
+        super().handle_starttag(tag, attrs)
+        cls = dict(attrs).get("class") or ""
+        if "LangTW" in cls and "MovieName" in cls:
+            self._grab, self._buf = "name", []
+        elif "LangTW" in cls and "RealShowDate" in cls:
+            self._grab, self._buf = "date", []
+        elif "SessionTimeInfo" in cls:
+            self._in_session = 1
+        elif self._in_session and tag == "div":
+            self._in_session += 1
+
+    def handle_endtag(self, tag):
+        super().handle_endtag(tag)
+        if self._grab and tag == "strong":
+            text = re.sub(r"\s+", " ", "".join(self._buf)).strip()
+            if self._grab == "name":
+                self._name, self._date = text, None
+            else:
+                self._date = text
+            self._grab = None
+        elif self._in_session and tag == "div":
+            self._in_session -= 1
+
+    def handle_data(self, data):
+        if self._skip:
+            return
+        if self._grab:
+            self._buf.append(data)
+        elif self._in_session and self._name and self._date:
+            for m in re.finditer(r"(\d{1,2}):(\d{2})", data):
+                self.items.append((self._name, self._date, f"{int(m.group(1)):02d}:{m.group(2)}"))
+
+
+def vs_split_name(raw):
+    """「(數位 國)麵包超人電影版 (普遍級)」→ (片名, 版本, 分級)"""
+    m = VS_NAME_RE.match(raw)
+    if not m:
+        return raw, "", ""
+    tags, title, rating = m.group(1), m.group(2), m.group(3) or ""
+    title = re.sub(r"^[A-Z]-(?=\S)", "", title) if "LIVE" in tags else title   # 直播片名前的 A-/B- 排序碼
+    ver = [VS_TAG.get(t, t) for t in tags.split()]
+    return title.strip(), " ".join(v for v in ver if v), VS_RATING.get(rating, "")
+
+
+def norm_title(t):
+    t = re.sub(r"[\s　：:！!？?・·．.,，、\-–—~～「」『』（）()]", "", t)
+    return t.lower()
+
+
+def vs_date(md, today):
+    m = VS_DATE_RE.search(md)
+    if not m:
+        return None
+    mo, d = int(m.group(1)), int(m.group(2))
+    y = today.year + (1 if mo < today.month - 6 else 0) - (1 if mo > today.month + 6 else 0)
+    try:
+        return dt.date(y, mo, d)
+    except ValueError:
+        return None
+
+
+def fetch_vieshow(today, films):
+    """回傳 {開眼影院 id: [[日期, 影院, 片 id, 時間, 版本], ...]}；抓不到的影院不會出現在結果裡。"""
+    index = {norm_title(v["title"]): fid for fid, v in films.items()}
+    out, bad = {}, set()
+    for code, tid, extra in VS_CODES:
+        try:
+            p = VieshowParser()
+            p.feed(fetch(VS_URL, form={"CinemaCode": code}))
+        except Exception as e:
+            print(f"   ⚠ 威秀 {code} 沒抓到（{e}），這間改用開眼的資料")
+            bad.add(tid); continue
+        if not p.items:
+            print(f"   ⚠ 威秀 {code} 沒有資料，這間改用開眼的資料")
+            bad.add(tid); continue
+        rows = out.setdefault(tid, [])
+        for raw, md, hhmm in p.items:
+            d = vs_date(md, today)
+            if not d or d < today:
+                continue
+            title, ver, rating = vs_split_name(raw)
+            key = norm_title(title)
+            fid = index.get(key)
+            if not fid:   # 名稱寫法略有不同：互相包含也算同一部
+                fid = next((f for k, f in index.items() if len(k) >= 4 and len(key) >= 4 and (k in key or key in k)), None)
+            if not fid:
+                fid = "vs_" + key[:40]
+                films.setdefault(fid, {"title": title, "runtime": None, "rating": rating})
+                index[key] = fid
+            else:
+                base = films[fid]["title"]
+                if base != title and base in title:          # 例如「進擊的鼓手 4K重映」→ 版本標「4K重映」
+                    ver = " ".join(x for x in (ver, title.replace(base, "").strip()) if x)
+                if rating and not films[fid].get("rating"):
+                    films[fid]["rating"] = rating
+            ver = " ".join(x for x in (ver, extra) if x)
+            rows.append([d.isoformat(), tid, fid, hhmm, ver])
+        print(f"   威秀 {code}：{len(p.items)} 場")
+    # 同一間影城（例如松仁的一般廳和 MUCROWN）只要有一部分沒抓到，就整間改用開眼，避免場次缺一半
+    return {tid: rows for tid, rows in out.items() if tid not in bad}
+
+
 def discover_theaters():
     try:
         p = TheaterListParser()
@@ -351,6 +486,7 @@ def main():
     ap.add_argument("--debug", action="store_true")
     ap.add_argument("--strict", action="store_true", help="（舊選項，保留相容）")
     ap.add_argument("--gentle", action="store_true", help="慢慢抓，一次一頁（GitHub 自動更新用）")
+    ap.add_argument("--no-vieshow", action="store_true", help="不抓威秀官網，只用開眼")
     args = ap.parse_args()
 
     global WORKERS, GAP, BACKOFF
@@ -446,7 +582,27 @@ def main():
             collect(t, d, f, s)
             later += next_jobs(t, d, more)
 
-    dates = sorted({dt.date.fromisoformat(s[0]) for s in shows})
+    # 威秀：改用官網資料（比開眼完整，包含預售、首映、直播）
+    if not args.no_vieshow:
+        print("④ 抓取威秀官網的場次（含預售、特殊場次）…")
+        vs = fetch_vieshow(today, films)
+        if vs:
+            shows[:] = [s for s in shows if s[1] not in vs]
+            misses[:] = [m for m in misses if m[0] not in vs]
+            seen_rows = set()
+            for rows in vs.values():
+                for r in rows:
+                    k = tuple(r)
+                    if k not in seen_rows:
+                        seen_rows.add(k); shows.append(r)
+
+    # 沒抓到的日期也要列出來，頁面上才看得到「這次沒抓到」的提示
+    dates = sorted({dt.date.fromisoformat(s[0]) for s in shows} | {dt.date.fromisoformat(m[1]) for m in misses})
+    skipped = sum(1 for x in failed if "連續失敗太多次" in x)
+    if skipped:
+        print(f"   ⚠ 開眼暫時擋住連線，有 {skipped} 頁直接跳過（下次更新會再抓）")
+    if dates:
+        print(f"   場次日期：{dates[0]:%m/%d}～{dates[-1]:%m/%d}")
 
     if not shows:
         raise SystemExit("沒有抓到任何場次，可能是網站改版了。請用 --debug 執行並把 debug_html 資料夾裡的檔案給 Claude 看。")
@@ -464,7 +620,7 @@ def main():
     with open(args.out, "w", encoding="utf-8") as f:
         f.write(PAGE.replace("__DATA__", payload))
 
-    print(f"④ 完成：{len(films)} 部電影、{len(shows)} 場 → {args.out}")
+    print(f"⑤ 完成：{len(films)} 部電影、{len(shows)} 場 → {args.out}")
     if empty:
         print(f"   （{len(empty)} 頁沒有場次，多半是戲院當天未排片或資料尚未公布）")
     if failed:
