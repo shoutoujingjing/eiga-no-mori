@@ -852,6 +852,9 @@ h1{color:var(--page-ink)}
 .miss{display:flex;gap:10px;align-items:center}
 .miss-ic{width:34px;height:34px;flex:none}
 .pb-ic{width:28px;height:28px;flex:none}
+/* 所有輸入框：米白底配深咖啡字 */
+input,select,textarea{color:var(--ink);caret-color:var(--accent)}
+input::placeholder{color:var(--mute);opacity:.8}
 /* 日期：一格一格的方塊 */
 .dates{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:3px;max-width:100%}
 .dates::-webkit-scrollbar{display:none}
