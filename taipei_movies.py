@@ -413,15 +413,47 @@ def vs_date(md, today):
         return None
 
 
+class VieshowSession:
+    """模仿瀏覽器：先開一次場次查詢頁拿 cookie，之後的查詢都帶著 cookie 和瀏覽器會送的標頭。"""
+    PAGE = "https://www.vscinemas.com.tw/ShowTimes/"
+
+    def __init__(self):
+        import http.cookiejar
+        from urllib.request import build_opener, HTTPCookieProcessor, HTTPSHandler
+        self.opener = build_opener(HTTPCookieProcessor(http.cookiejar.CookieJar()), HTTPSHandler(context=SSL_CTX))
+        self.base = {"User-Agent": UA, "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8"}
+        self._get(self.PAGE, {"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"})
+
+    def _get(self, url, headers, body=None):
+        _wait_turn()
+        with self.opener.open(Request(url, data=body, headers={**self.base, **headers}), timeout=20) as r:
+            return r.read().decode(r.headers.get_content_charset() or "utf-8", "replace")
+
+    def showtimes(self, code):
+        from urllib.parse import urlencode
+        return self._get(VS_URL, {
+            "Accept": "*/*", "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "X-Requested-With": "XMLHttpRequest", "Origin": "https://www.vscinemas.com.tw", "Referer": self.PAGE,
+        }, urlencode({"CinemaCode": code}).encode())
+
+
 def fetch_vieshow(today, films):
     """回傳 {開眼影院 id: [[日期, 影院, 片 id, 時間, 版本], ...]}；抓不到的影院不會出現在結果裡。"""
     index = {norm_title(v["title"]): fid for fid, v in films.items()}
     out, bad = {}, set()
-    for code, tid, extra in VS_CODES:
+    try:
+        sess = VieshowSession()
+    except Exception as e:
+        print(f"   ⚠ 威秀官網連不上（{e}），全部改用開眼的資料")
+        return {}
+    for n, (code, tid, extra) in enumerate(VS_CODES):
         try:
             p = VieshowParser()
-            p.feed(fetch(VS_URL, form={"CinemaCode": code}))
+            p.feed(sess.showtimes(code))
         except Exception as e:
+            if n == 0 and "403" in str(e):
+                print(f"   ⚠ 威秀官網拒絕連線（{e}），這次全部改用開眼的資料")
+                return {}
             print(f"   ⚠ 威秀 {code} 沒抓到（{e}），這間改用開眼的資料")
             bad.add(tid); continue
         if not p.items:
