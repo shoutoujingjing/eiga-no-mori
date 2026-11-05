@@ -486,6 +486,170 @@ def fetch_vieshow(today, films):
     return {tid: rows for tid, rows in out.items() if tid not in bad}
 
 
+# ── 其他影城官網（開眼更新比較慢的藝術影院）──────────────────────────
+def match_film(title, rating, films, index, prefix):
+    """用片名把官網的電影對到開眼的電影；對不到就新增一部。"""
+    key = norm_title(title)
+    fid = index.get(key) or next((f for k, f in index.items()
+                                  if len(k) >= 3 and len(key) >= 3 and (k in key or key in k)), None)
+    if not fid:
+        fid = prefix + key[:40]
+        films.setdefault(fid, {"title": title, "runtime": None, "rating": rating})
+        index[key] = fid
+    elif rating and not films[fid].get("rating"):
+        films[fid]["rating"] = rating
+    return fid
+
+
+class TableRowParser(_Base):
+    """把 <table id="YYYYMMDD"> 裡每一列的格子文字收集起來（光點華山用）。"""
+
+    def __init__(self):
+        super().__init__()
+        self.rows = []          # (YYYYMMDD, [格子文字…])
+        self._table = None
+        self._cells = None
+        self._cell = None
+
+    def handle_starttag(self, tag, attrs):
+        super().handle_starttag(tag, attrs)
+        a = dict(attrs)
+        if tag == "table" and re.fullmatch(r"\d{8}", a.get("id") or ""):
+            self._table = a["id"]
+        elif tag == "tr" and self._table:
+            self._cells = []
+        elif tag == "td" and self._cells is not None:
+            self._cell = []
+        elif tag == "br" and self._cell is not None:
+            self._cell.append("\n")
+
+    def handle_endtag(self, tag):
+        super().handle_endtag(tag)
+        if tag == "td" and self._cell is not None:
+            self._cells.append("".join(self._cell).strip())
+            self._cell = None
+        elif tag == "tr" and self._cells is not None:
+            if self._table:
+                self.rows.append((self._table, self._cells))
+            self._cells = None
+        elif tag == "table":
+            self._table = None
+
+    def handle_data(self, data):
+        if self._cell is not None and not self._skip:
+            self._cell.append(data)
+
+
+def fetch_spot_huashan(today, films, index):
+    html = fetch("https://www.spot-hs.org.tw/movie/schedule.html")
+    p = TableRowParser(); p.feed(html)
+    rows = []
+    for ymd, cells in p.rows:
+        d = dt.datetime.strptime(ymd, "%Y%m%d").date()
+        if d < today:
+            continue
+        cells = [c for c in cells if c]
+        ti = next((i for i, c in enumerate(cells) if TIME_RE.match(c.strip())), None)
+        if ti is None or ti + 1 >= len(cells):
+            continue
+        h, m = TIME_RE.match(cells[ti].strip()).groups()
+        title = cells[ti + 1].split("\n")[0].strip()
+        runtime = next((int(c) for c in cells[ti + 2:] if c.isdigit()), None)
+        rating = cells[-1].strip() if cells[-1].strip() in ("普", "護", "輔12", "輔15", "限") else ""
+        if not title:
+            continue
+        fid = match_film(title, rating, films, index, "hs_")
+        if runtime and not films[fid].get("runtime"):
+            films[fid]["runtime"] = runtime
+        rows.append([d.isoformat(), "t02b16", fid, f"{int(h):02d}:{m}", ""])
+    return rows
+
+
+def _html_text(html):
+    html = re.sub(r"(?is)<(script|style|noscript)\b.*?</\1>", " ", html)
+    html = re.sub(r"(?i)<br\s*/?>|</(p|li|div|tr|h\d|dd|dt)>", "\n", html)
+    text = re.sub(r"<[^>]+>", " ", html)
+    from html import unescape
+    return unescape(text)
+
+
+ESLITE_SCHEDULE = "https://meet.eslite.com/tw/tc/gallery/movieschedule/201803020001"
+ESLITE_FILM_RE = re.compile(r"/tw/tc/artshow/(\d{8,})")
+MD_RE = re.compile(r"(?<![\d/])(\d{1,2})/(\d{1,2})\s*[（(]\s*[一二三四五六日]\s*[)）]")
+START_RE = re.compile(r"(?<![\d:])(\d{1,2}):(\d{2})(?:\s*[-–~～]\s*\d{1,2}:\d{2})?")
+
+
+def _eslite_title(raw):
+    t = re.sub(r"\s*[-|｜]\s*迷誠品.*$", "", raw).strip()
+    tag = ""
+    if "周日經典" in t or "週日經典" in t:
+        tag = "週日經典"
+    t = re.split(r"\s*[🔆✨★☆]\s*", t)[0].strip()
+    t = re.sub(r"\s+[A-Za-z0-9][A-Za-z0-9 :'’!?,.&\-–()]*$", "", t).strip()   # 拿掉片名後面的英文原名
+    return t, tag
+
+
+def fetch_eslite(today, films, index):
+    page = fetch(ESLITE_SCHEDULE)
+    ids = sorted(set(ESLITE_FILM_RE.findall(page)))
+    if not ids:
+        raise RuntimeError("時刻表頁面上找不到電影")
+    rows = []
+    for fid_raw in ids:
+        html = fetch(f"https://meet.eslite.com/tw/tc/artshow/{fid_raw}")
+        m = re.search(r"(?is)<title>(.*?)</title>", html)
+        title, tag = _eslite_title(_html_text(m.group(1)).strip() if m else "")
+        if not title:
+            continue
+        lv = re.search(r"級別[：:]\s*(\S+)", _html_text(html))
+        lv = lv.group(1) if lv else ""
+        rating = next((v for k, v in (("限", "限"), ("輔15", "輔15"), ("輔12", "輔12"), ("護", "護"), ("普", "普"))
+                       if k in lv), "")
+        fid = match_film(title, rating, films, index, "es_")
+        rt = re.search(r"片長[：:]\s*(\d+)\s*分", _html_text(html))
+        if rt and not films[fid].get("runtime"):
+            films[fid]["runtime"] = int(rt.group(1))
+        seen = set()
+        lines = [x.strip() for x in _html_text(html).split("\n") if x.strip()]
+        for i, line in enumerate(lines):
+            dm = MD_RE.search(line)
+            if not dm:
+                continue
+            d = vs_date(f"{dm.group(1)}月{dm.group(2)}日", today)
+            if not d or d < today:
+                continue
+            rest = line[dm.end():]
+            if not START_RE.search(rest) and i + 1 < len(lines) and not MD_RE.search(lines[i + 1]):
+                rest = lines[i + 1]          # 日期和時間分在兩行的情況
+            for h, mi in START_RE.findall(rest):
+                k = (d, f"{int(h):02d}:{mi}")
+                if k not in seen:
+                    seen.add(k)
+                    rows.append([d.isoformat(), "t02a08", fid, k[1], tag])
+    return rows
+
+
+OFFICIAL = [("t02b16", "光點華山", fetch_spot_huashan), ("t02a08", "誠品電影院", fetch_eslite)]
+
+
+def fetch_official(today, films):
+    index = {norm_title(v["title"]): fid for fid, v in films.items()}
+    out = {}
+    for tid, name, fn in OFFICIAL:
+        try:
+            rows = fn(today, films, index)
+        except Exception as e:
+            print(f"   ⚠ {name}官網沒抓到（{e}），這間改用開眼的資料")
+            continue
+        if not rows:
+            print(f"   ⚠ {name}官網沒有讀到場次，這間改用開眼的資料")
+            continue
+        days = sorted({r[0] for r in rows})
+        print(f"   {name}：{len(rows)} 場（{days[0][5:]}～{days[-1][5:]}）")
+        out[tid] = rows
+    return out
+
+
 def discover_theaters():
     try:
         p = TheaterListParser()
@@ -628,6 +792,13 @@ def main():
                     if k not in seen_rows:
                         seen_rows.add(k); shows.append(r)
 
+    # 光點華山、誠品：官網比開眼早公布下一週
+    print("⑤ 抓取光點華山、誠品官網的場次…")
+    off = fetch_official(today, films)
+    if off:
+        shows[:] = [s for s in shows if s[1] not in off] + [r for rows in off.values() for r in rows]
+        misses[:] = [m for m in misses if m[0] not in off]
+
     # 沒抓到的日期也要列出來，頁面上才看得到「這次沒抓到」的提示
     dates = sorted({dt.date.fromisoformat(s[0]) for s in shows} | {dt.date.fromisoformat(m[1]) for m in misses})
     skipped = sum(1 for x in failed if "連續失敗太多次" in x)
@@ -652,7 +823,7 @@ def main():
     with open(args.out, "w", encoding="utf-8") as f:
         f.write(PAGE.replace("__DATA__", payload))
 
-    print(f"⑤ 完成：{len(films)} 部電影、{len(shows)} 場 → {args.out}")
+    print(f"⑥ 完成：{len(films)} 部電影、{len(shows)} 場 → {args.out}")
     if empty:
         print(f"   （{len(empty)} 頁沒有場次，多半是戲院當天未排片或資料尚未公布）")
     if failed:
